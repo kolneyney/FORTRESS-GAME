@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from .database import Base, engine
 from . import models
+from .quiz import router as quiz_router
 
 app = FastAPI(
     title="Fortress Quiz API",
@@ -12,6 +13,8 @@ app = FastAPI(
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+app.include_router(quiz_router)
 
 
 @app.get("/")

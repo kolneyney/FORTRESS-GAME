@@ -134,6 +134,43 @@ class QuizQuestion(Base):
         nullable=False
     )
 
+    topic: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False
+    )
+
+    explanation: Mapped[str] = mapped_column(
+        String(1000),
+        nullable=False
+    )
+
+    question_type: Mapped[str] = mapped_column(
+        String(20),
+        default="permanent",
+        nullable=False
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="approved",
+        nullable=False
+    )
+
+    source: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
+    source_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
 class QuizSession(Base):
     __tablename__ = "quiz_sessions"
 
@@ -169,4 +206,35 @@ class QuizSession(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow
+    )
+
+class PlayerDefense(Base):
+    __tablename__ = "player_defenses"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    player_id: Mapped[int] = mapped_column(
+        ForeignKey("players.id"),
+        nullable=False
+    )
+
+    defense_name: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False
+    )
+
+    level: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
     )
