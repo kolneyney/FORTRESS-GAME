@@ -34,6 +34,12 @@ class User(Base):
         nullable=False
     )
 
+    guest_token: Mapped[str | None] = mapped_column(
+    String(100),
+    unique=True,
+    nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow
@@ -227,14 +233,13 @@ class PlayerDefense(Base):
         nullable=False
     )
 
-    level: Mapped[int] = mapped_column(
+    price: Mapped[int] = mapped_column(
         Integer,
-        default=1,
         nullable=False
     )
 
-    is_active: Mapped[bool] = mapped_column(
+    is_owned: Mapped[bool] = mapped_column(
         Boolean,
-        default=True,
+        default=False,
         nullable=False
     )

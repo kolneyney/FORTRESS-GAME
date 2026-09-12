@@ -1,8 +1,9 @@
 from fastapi import FastAPI
-
 from .database import Base, engine
 from . import models
 from .quiz import router as quiz_router
+from .defense import router as defense_router
+from .auth import router as auth_router
 
 app = FastAPI(
     title="Fortress Quiz API",
@@ -15,6 +16,8 @@ app = FastAPI(
 Base.metadata.create_all(bind=engine)
 
 app.include_router(quiz_router)
+app.include_router(defense_router)
+app.include_router(auth_router)
 
 
 @app.get("/")
