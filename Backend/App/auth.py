@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import random
 import secrets
+import re
 from pydantic import BaseModel
 from passlib.context import CryptContext
 
@@ -23,7 +24,7 @@ pwd_context = CryptContext(
 
 
 class RegisterRequest(BaseModel):
-    user_id: int
+    guest_token: str
     username: str
     email: str
     password: str
@@ -105,6 +106,13 @@ def get_guest(
         "coins": user.player.coins
     }
 
+def is_valid_email(email: str) -> bool:
+    pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    return re.match(pattern, email) is not None
+
+
+def is_valid_password(password: str) -> bool:
+    return len(password) >= 8
 
 @router.post("/register")
 def register_guest(
@@ -112,19 +120,26 @@ def register_guest(
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(
-        User.id == data.user_id
+        User.guest_token == data.guest_token,
+        User.is_guest == True
     ).first()
 
     if not user:
         raise HTTPException(
             status_code=404,
-            detail="User not found"
+            detail="Guest account not found"
         )
 
-    if not user.is_guest:
+    if not is_valid_email(data.email):
         raise HTTPException(
             status_code=400,
-            detail="User is already registered"
+            detail="Invalid email format"
+        )
+
+    if not is_valid_password(data.password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters"
         )
 
     existing_username = db.query(User).filter(
