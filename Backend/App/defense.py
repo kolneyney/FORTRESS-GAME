@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from .database import get_db
 from .models import Player, PlayerDefense
+from .auth import get_current_user
+
 
 
 router = APIRouter(
@@ -47,14 +49,12 @@ def initialize_defenses(player_id: int, db: Session):
     db.commit()
 
 
-@router.get("/{player_id}")
+@router.get("")
 def get_defenses(
-    player_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    player = db.query(Player).filter(
-        Player.id == player_id
-    ).first()
+    player = current_user.player
 
     if not player:
         raise HTTPException(
@@ -63,11 +63,11 @@ def get_defenses(
         )
 
     defenses = db.query(PlayerDefense).filter(
-        PlayerDefense.player_id == player_id
+        PlayerDefense.player_id == player.id
     ).all()
 
     return {
-        "player_id": player_id,
+        "player_id": player.id,
         "coins": player.coins,
         "defenses": [
             {
@@ -80,15 +80,13 @@ def get_defenses(
         ]
     }
 
-@router.post("/{player_id}/buy/{defense_id}")
+@router.post("/buy/{defense_id}")
 def buy_defense(
-    player_id: int,
     defense_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    player = db.query(Player).filter(
-        Player.id == player_id
-    ).first()
+    player = current_user.player
 
     if not player:
         raise HTTPException(
@@ -97,8 +95,8 @@ def buy_defense(
         )
 
     defense = db.query(PlayerDefense).filter(
-        PlayerDefense.id == defense_id,
-        PlayerDefense.player_id == player_id
+    PlayerDefense.id == defense_id,
+    PlayerDefense.player_id == player.id
     ).first()
 
     if not defense:

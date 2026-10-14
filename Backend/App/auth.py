@@ -1,15 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta
+import os
+from jose import jwt
+from dotenv import load_dotenv
+from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import random
 import secrets
 import re
 from pydantic import BaseModel
 from passlib.context import CryptContext
-
 from .database import get_db
 from .models import User, Player
-from .defense import initialize_defenses
 
+
+load_dotenv()
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))
 
 router = APIRouter(
     prefix="/auth",
@@ -22,6 +31,76 @@ pwd_context = CryptContext(
     deprecated="auto"
 )
 
+security = HTTPBearer()
+
+
+def create_access_token(user_id: int):
+    expire = datetime.utcnow() + timedelta(
+        minutes=JWT_EXPIRE_MINUTES
+    )
+
+    payload = {
+        "sub": str(user_id),
+        "exp": expire
+    }
+
+    return jwt.encode(
+        payload,
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM
+    )
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM]
+        )
+
+        user_id = payload.get("sub")
+
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token"
+            )
+
+        user = db.query(User).filter(
+            User.id == int(user_id)
+        ).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail="User not found"
+            )
+
+        return user
+
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token"
+        )
+
+@router.get("/me")
+def get_me(
+    current_user: User = Depends(get_current_user)
+):
+    return {
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "is_guest": current_user.is_guest,
+        "player_id": current_user.player.id,
+        "coins": current_user.player.coins
+    }
+
 
 class RegisterRequest(BaseModel):
     guest_token: str
@@ -29,6 +108,9 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 @router.post("/guest")
 def create_guest(
@@ -69,7 +151,11 @@ def create_guest(
     db.commit()
     db.refresh(player)
 
+    from .defense import initialize_defenses
+
     initialize_defenses(player.id, db)
+
+    access_token = create_access_token(user.id)
 
     return {
         "message": "Guest player created!",
@@ -77,6 +163,8 @@ def create_guest(
         "player_id": player.id,
         "username": user.username,
         "guest_token": user.guest_token,
+        "access_token": access_token,
+        "token_type": "bearer",
         "is_guest": True,
         "coins": player.coins
     }
@@ -180,4 +268,45 @@ def register_guest(
         "username": user.username,
         "email": user.email,
         "player_id": user.player.id
+    }
+
+@router.post("/login")
+def login(
+    data: LoginRequest,
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(
+        User.username == data.username,
+        User.is_guest == False
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    if not user.password_hash:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    if not pwd_context.verify(data.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    access_token = create_access_token(user.id)
+
+    return {
+        "message": "Login successful!",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "username": user.username,
+        "is_guest": user.is_guest,
+        "player_id": user.player.id,
+        "coins": user.player.coins
     }

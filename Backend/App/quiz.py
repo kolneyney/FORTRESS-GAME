@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from .database import get_db
 from .models import QuizQuestion, Player, QuizSession
+from .auth import get_current_user
 
 
 router = APIRouter(
@@ -13,10 +14,8 @@ router = APIRouter(
 
 
 class AnswerRequest(BaseModel):
-    player_id: int
     question_id: int
     answer: str
-
 
 def get_difficulty_from_streak(streak: int) -> int:
     if streak <= 2:
@@ -43,14 +42,56 @@ def get_base_reward(difficulty: int) -> int:
     return rewards.get(difficulty, 10)
 
 
-@router.get("/question/{player_id}")
-def get_question(
-    player_id: int,
+@router.post("/start")
+def start_quiz(
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    player = db.query(Player).filter(
-        Player.id == player_id
-    ).first()
+    player = current_user.player
+
+    if not player:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
+        )
+
+    old_sessions = db.query(QuizSession).filter(
+        QuizSession.player_id == player.id,
+        QuizSession.is_active == True
+    ).all()
+
+    for old_session in old_sessions:
+        old_session.is_active = False
+
+    player.current_streak = 0
+
+    session = QuizSession(
+        player_id=player.id,
+        current_streak=0,
+        temporary_reward=0,
+        is_active=True
+    )
+
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    return {
+        "message": "Quiz started!",
+        "session_id": session.id,
+        "current_streak": 0,
+        "session_coins": 0,
+        "player_total_coins": player.coins
+    }
+
+
+
+@router.get("/question")
+def get_question(
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    player = current_user.player
 
     if not player:
         raise HTTPException(
@@ -114,11 +155,10 @@ def get_question(
 @router.post("/answer")
 def submit_answer(
     answer_data: AnswerRequest,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    player = db.query(Player).filter(
-        Player.id == answer_data.player_id
-    ).first()
+    player = current_user.player
 
     if not player:
         raise HTTPException(
@@ -204,14 +244,12 @@ def submit_answer(
         }
 
 
-@router.post("/cashout/{player_id}")
+@router.post("/cashout")
 def cashout_quiz(
-    player_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    player = db.query(Player).filter(
-        Player.id == player_id
-    ).first()
+    player = current_user.player
 
     if not player:
         raise HTTPException(
@@ -251,50 +289,4 @@ def cashout_quiz(
         "best_streak": player.best_streak,
         "game_over": False,
         "cashed_out": True
-    }
-
-
-@router.post("/start/{player_id}")
-def start_quiz(
-    player_id: int,
-    db: Session = Depends(get_db)
-):
-    player = db.query(Player).filter(
-        Player.id == player_id
-    ).first()
-
-    if not player:
-        raise HTTPException(
-            status_code=404,
-            detail="Player not found"
-        )
-
-    old_sessions = db.query(QuizSession).filter(
-        QuizSession.player_id == player.id,
-        QuizSession.is_active == True
-    ).all()
-
-    for old_session in old_sessions:
-        old_session.is_active = False
-
-    player.current_streak = 0
-
-    session = QuizSession(
-        player_id=player.id,
-        current_streak=0,
-        temporary_reward=0,
-        is_active=True
-    )
-
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-
-    return {
-        "message": "Quiz started!",
-        "session_id": session.id,
-        "player_id": player.id,
-        "current_streak": 0,
-        "session_coins": 0,
-        "player_total_coins": player.coins
     }
