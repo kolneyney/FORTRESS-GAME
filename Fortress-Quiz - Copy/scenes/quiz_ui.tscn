@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cmkcem0seyouy"]
+
+[ext_resource type="Script" uid="uid://88s5x5qpnqox" path="res://scripts/quiz_ui.gd" id="1_501xa"]
+
+[node name="QuizUi" type="Control" unique_id=932804821]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_501xa")
