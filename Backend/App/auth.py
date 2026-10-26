@@ -103,9 +103,7 @@ def get_me(
 
 
 class RegisterRequest(BaseModel):
-    guest_token: str
     username: str
-    email: str
     password: str
 
 class LoginRequest(BaseModel):
@@ -200,75 +198,105 @@ def is_valid_email(email: str) -> bool:
 
 
 def is_valid_password(password: str) -> bool:
-    return len(password) >= 8
+    return (
+        len(password) >= 8
+        and re.search(r"[A-Z]", password) is not None
+        and re.search(r"[a-z]", password) is not None
+        and re.search(r"[0-9]", password) is not None
+        and re.search(r"[^A-Za-z0-9]", password) is not None
+    )
+
 
 @router.post("/register")
-def register_guest(
+def register(
     data: RegisterRequest,
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(
-        User.guest_token == data.guest_token,
-        User.is_guest == True
-    ).first()
+    username = data.username.strip()
 
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="Guest account not found"
-        )
-
-    if not is_valid_email(data.email):
+    if not username:
         raise HTTPException(
             status_code=400,
-            detail="Invalid email format"
+            detail="Username is required"
+        )
+
+    if len(username) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Username must be 50 characters or fewer"
         )
 
     if not is_valid_password(data.password):
         raise HTTPException(
             status_code=400,
-            detail="Password must be at least 8 characters"
+            detail=(
+                "Password must be at least 8 characters "
+                "and include uppercase, lowercase, "
+                "a number, and a symbol"
+            )
         )
 
-    existing_username = db.query(User).filter(
-        User.username == data.username,
-        User.id != user.id
+    existing_user = db.query(User).filter(
+        User.username == username
     ).first()
 
-    if existing_username:
+    if existing_user:
         raise HTTPException(
             status_code=400,
             detail="Username already exists"
         )
 
-    existing_email = db.query(User).filter(
-        User.email == data.email,
-        User.id != user.id
-    ).first()
-
-    if existing_email:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already exists"
+    try:
+        user = User(
+            username=username,
+            password_hash=pwd_context.hash(data.password),
+            is_guest=False
         )
 
-    user.username = data.username
-    user.email = data.email
-    user.password_hash = pwd_context.hash(data.password)
-    user.is_guest = False
-    user.guest_token = None
+        db.add(user)
+        db.flush()
 
-    db.commit()
-    db.refresh(user)
+        player = Player(
+            user_id=user.id,
+            coins=0,
+            fortress_level=1,
+            current_streak=0,
+            best_streak=0
+        )
 
-    return {
-        "message": "Guest account converted successfully!",
-        "user_id": user.id,
-        "is_guest": user.is_guest,
-        "username": user.username,
-        "email": user.email,
-        "player_id": user.player.id
-    }
+        db.add(player)
+        db.flush()
+
+        from .defense import initialize_defenses
+        initialize_defenses(player.id, db)
+
+        db.commit()
+        db.refresh(user)
+        db.refresh(player)
+
+        access_token = create_access_token(user.id)
+
+        return {
+            "message": "Registration successful!",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "player_id": player.id,
+            "username": user.username,
+            "is_guest": False,
+            "coins": player.coins
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Registration failed. Please try again."
+        )
+
 
 @router.post("/login")
 def login(
