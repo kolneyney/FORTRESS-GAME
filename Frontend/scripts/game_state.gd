@@ -8,6 +8,11 @@ var temp_coins = 0
 var streak = 0
 var best_wave = 0
 
+# login info (filled in by the login page)
+var token = ""
+var username = ""
+var logged_in = false
+
 var levels = {"firewall": 0, "antivirus": 0, "mfa": 0, "backup": 0}
 const BASE_PRICE = {"firewall": 15, "antivirus": 25, "mfa": 50, "backup": 100}
 const MAX_LEVEL = 5

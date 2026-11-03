@@ -58,11 +58,32 @@ func _ready():
 	var info_button = _button("Info", 28, 60)
 	info_button.custom_minimum_size = Vector2(130, 60)
 	$UI.add_child(info_button)
-	info_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 30)
-
+	info_button.anchor_left = 1.0
+	info_button.anchor_right = 1.0
+	info_button.offset_left = -190
+	info_button.offset_right = -40
+	info_button.offset_top = 20
+	info_button.offset_bottom = 80
+	
 	var info_page = preload("res://scripts/info_ui.gd").new()
 	$UI.add_child(info_page)
 	info_button.pressed.connect(info_page.open)
+
+
+	var login_button = _button("Login", 28, 60)
+	login_button.clip_text = true
+	$UI.add_child(login_button)
+	login_button.anchor_left = 1.0
+	login_button.anchor_right = 1.0
+	login_button.offset_left = -400
+	login_button.offset_right = -210
+	login_button.offset_top = 20
+	login_button.offset_bottom = 80
+
+	var login_page = preload("res://scripts/auth_ui.gd").new()
+	$UI.add_child(login_page)
+	login_button.pressed.connect(login_page.open)
+	login_page.logged_in.connect(func(n): login_button.text = n if n != "" else "Login")
 
 	call_button = _button("Call Wave (+1-5)", 28, 60)
 	call_button.pressed.connect(_on_call_wave)
