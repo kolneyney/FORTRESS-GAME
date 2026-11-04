@@ -352,7 +352,7 @@ func _next_question():
 	bank_button.visible = false
 	continue_button.visible = false
 	leave_button.visible = GameState.temp_coins == 0
-	hint_label.text = "Answer correctly to win +%d coins. A wrong answer loses unbanked coins." % _next_reward()
+	hint_label.text = "Answer correctly to win +%d coins. A wrong answer ends the quiz and you keep only half of your unbanked coins." % _next_reward()
 	_update_labels()
 
 
@@ -371,10 +371,12 @@ func _on_answer(i):
 		continue_button.text = "RISK IT  (next +%d)" % _next_reward()
 		bank_button.visible = true
 		continue_button.visible = true
-		hint_label.text = "Bank to keep your coins, or risk them for a bigger reward."
+		hint_label.text = "Bank to keep all your coins, or risk them for more. A wrong answer keeps only half."
 	else:
 		answer_buttons[i].modulate = Color(1.0, 0.4, 0.4)
-		var lost = GameState.temp_coins
+		var at_risk_now = GameState.temp_coins
+		var kept = floori(at_risk_now / 2.0)
+		GameState.coins += kept
 		GameState.temp_coins = 0
 		GameState.streak = 0
 		failed = true
@@ -382,10 +384,10 @@ func _on_answer(i):
 		continue_button.text = "Close"
 		bank_button.visible = false
 		continue_button.visible = true
-		if lost > 0:
-			hint_label.text = "You lost %d unbanked coins." % lost
+		if at_risk_now > 0:
+			hint_label.text = "You had %d coins at risk and kept half: +%d coins." % [at_risk_now, kept]
 		else:
-			hint_label.text = "No coins lost this time."
+			hint_label.text = "No coins were at risk this time."
 	leave_button.visible = false
 	_update_labels()
 
