@@ -1,190 +1,13 @@
 extends Control
 
 const FONT_PATH = "res://assets/fonts/PixeloidSans-lxa3y.ttf"
+const BASE_URL = "http://127.0.0.1:8000"
 
-# d = difficulty (1 easy, 2 medium, 3 hard)
-const QUESTIONS = [
-	{
-		"d": 1,
-		"q": "What is the main purpose of a firewall?",
-		"choices": [
-			"Recover deleted files",
-			"Create user passwords",
-			"Filter and control network traffic",
-			"Increase CPU speed",
-		],
-		"correct": 2,
-		"explanation": "A firewall controls network traffic using security rules.",
-	},
-	{
-		"d": 1,
-		"q": "What does Multi-Factor Authentication (MFA) provide?",
-		"choices": [
-			"Multiple copies of a password",
-			"More than one type of authentication factor",
-			"Faster internet access",
-			"Automatic file backup",
-		],
-		"correct": 1,
-		"explanation": "MFA requires two or more factors to verify identity.",
-	},
-	{
-		"d": 1,
-		"q": "What is phishing?",
-		"choices": [
-			"Physically damaging a computer",
-			"Tricking people into revealing sensitive information",
-			"Increasing network speed",
-			"Backing up files",
-		],
-		"correct": 1,
-		"explanation": "Phishing is a social engineering attack.",
-	},
-	{
-		"d": 1,
-		"q": "What does the term malware refer to?",
-		"choices": [
-			"A method of encrypting a database",
-			"Software used only for video editing",
-			"A physical network cable",
-			"Malicious software designed to harm systems",
-		],
-		"correct": 3,
-		"explanation": "Malware is software designed to damage or gain unauthorized access.",
-	},
-	{
-		"d": 1,
-		"q": "What is a strong password most likely to contain?",
-		"choices": [
-			"Your name and birth year",
-			"A long mix of letters, numbers and symbols",
-			"The word password",
-			"Only lowercase letters",
-		],
-		"correct": 1,
-		"explanation": "Long and varied passwords are much harder to guess.",
-	},
-	{
-		"d": 2,
-		"q": "Which attack tries many passwords until the correct one is found?",
-		"choices": [
-			"Phishing",
-			"Brute-force attack",
-			"DDoS attack",
-			"SQL injection",
-		],
-		"correct": 1,
-		"explanation": "Brute force repeatedly guesses password combinations.",
-	},
-	{
-		"d": 2,
-		"q": "What is the main objective of a DDoS attack?",
-		"choices": [
-			"Improve server performance",
-			"Encrypt a password",
-			"Install an antivirus program",
-			"Make a service unavailable by overwhelming it with traffic",
-		],
-		"correct": 3,
-		"explanation": "A DDoS attack floods a service with traffic so nobody can use it.",
-	},
-	{
-		"d": 2,
-		"q": "What is the primary function of an Intrusion Detection System (IDS)?",
-		"choices": [
-			"Encrypt every file",
-			"Replace damaged hardware",
-			"Detect and alert about suspicious activity",
-			"Create employee accounts",
-		],
-		"correct": 2,
-		"explanation": "An IDS monitors activity and raises alerts.",
-	},
-	{
-		"d": 2,
-		"q": "What is antivirus software primarily designed to do?",
-		"choices": [
-			"Increase internet bandwidth",
-			"Detect and help remove malicious software",
-			"Create network cables",
-			"Replace a firewall",
-		],
-		"correct": 1,
-		"explanation": "Antivirus detects, prevents and removes malicious software.",
-	},
-	{
-		"d": 2,
-		"q": "Why should you keep your software updated?",
-		"choices": [
-			"Updates patch known security holes",
-			"Updates make the screen brighter",
-			"Updates delete your old files",
-			"Updates are never important",
-		],
-		"correct": 0,
-		"explanation": "Updates fix vulnerabilities that attackers could exploit.",
-	},
-	{
-		"d": 3,
-		"q": "A web app puts user input straight into a database query. Which attack exploits this?",
-		"choices": [
-			"Phishing",
-			"DDoS",
-			"SQL injection",
-			"Brute-force attack",
-		],
-		"correct": 2,
-		"explanation": "SQL injection happens when untrusted input ends up inside a query.",
-	},
-	{
-		"d": 3,
-		"q": "Files suddenly become encrypted and a message demands payment. What is responsible?",
-		"choices": [
-			"Ransomware",
-			"Spyware",
-			"Adware",
-			"Rootkit",
-		],
-		"correct": 0,
-		"explanation": "Ransomware locks data until the victim pays.",
-	},
-	{
-		"d": 3,
-		"q": "Which technology detects malicious traffic AND automatically blocks it?",
-		"choices": [
-			"IDS",
-			"Antivirus",
-			"VPN",
-			"IPS",
-		],
-		"correct": 3,
-		"explanation": "An IPS can take action, such as blocking the traffic.",
-	},
-	{
-		"d": 3,
-		"q": "A company uses firewalls, MFA, monitoring and backups together. Which principle is this?",
-		"choices": [
-			"Defense in depth",
-			"Single sign-on",
-			"Data compression",
-			"Network segmentation",
-		],
-		"correct": 0,
-		"explanation": "Defense in depth uses several layers so one failure is not fatal.",
-	},
-	{
-		"d": 3,
-		"q": "Which backup rule says to keep 3 copies on 2 types of media with 1 copy offsite?",
-		"choices": [
-			"The 3-2-1 rule",
-			"The zero-trust rule",
-			"The least-privilege rule",
-			"The 5-4-3 rule",
-		],
-		"correct": 0,
-		"explanation": "The 3-2-1 rule protects data even if one copy or location is lost.",
-	},
-]
+var http: HTTPRequest
+var current_question_id = -1
+var is_loading = false
+var selected_answer_index = -1
+var request_type = ""
 
 var bank_label
 var streak_label
@@ -198,7 +21,6 @@ var continue_button
 var leave_button
 
 var current = {}
-var last_index = -1
 var answered = false
 var failed = false
 
@@ -220,6 +42,9 @@ func _button(text, font_size, height):
 
 
 func _ready():
+	http = HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(_on_api_request_completed)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visibility_changed.connect(_on_visibility_changed)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -319,75 +144,169 @@ func _ready():
 func open():
 	GameState.streak = 0
 	GameState.temp_coins = 0
+
+	answered = false
+	failed = false
+	selected_answer_index = -1
+	current_question_id = -1
+
+	question_label.text = "Loading question..."
+	explanation_label.text = ""
+	hint_label.text = "Getting your next question..."
+
+	bank_button.visible = false
+	continue_button.visible = false
+	leave_button.visible = true
+
+	for b in answer_buttons:
+		b.text = ""
+		b.disabled = true
+		b.modulate = Color.WHITE
+
+	_update_labels()
 	visible = true
-	_next_question()
+
+	if GameState.logged_in:
+		_start_registered_quiz()
+	else:
+		_request_question()
 
 
 func _next_reward():
-	return 10 * (GameState.streak + 1)
+	var next_streak = GameState.streak
+	var next_difficulty = 1
 
+	if next_streak <= 2:
+		next_difficulty = 1
+	elif next_streak <= 5:
+		next_difficulty = 2
+	elif next_streak <= 8:
+		next_difficulty = 3
+	elif next_streak <= 10:
+		next_difficulty = 4
+	else:
+		next_difficulty = 5
 
-func _pick_question():
-	var max_d = 1 + floori(GameState.streak / 2.0)
-	if max_d > 3:
-		max_d = 3
-	var candidates = []
-	for i in QUESTIONS.size():
-		if QUESTIONS[i]["d"] <= max_d and i != last_index:
-			candidates.append(i)
-	last_index = candidates.pick_random()
-	return QUESTIONS[last_index]
+	var rewards = {
+		1: 10,
+		2: 20,
+		3: 30,
+		4: 40,
+		5: 50
+	}
 
+	return rewards[next_difficulty]
 
 func _next_question():
 	answered = false
 	failed = false
-	current = _pick_question()
-	question_label.text = current["q"]
-	for i in 4:
-		answer_buttons[i].text = current["choices"][i]
-		answer_buttons[i].disabled = false
-		answer_buttons[i].modulate = Color.WHITE
+	question_label.text = "Loading question..."
+
+	for b in answer_buttons:
+		b.disabled = true
+		b.modulate = Color.WHITE
+
 	explanation_label.text = ""
 	bank_button.visible = false
 	continue_button.visible = false
 	leave_button.visible = GameState.temp_coins == 0
-	hint_label.text = "Answer correctly to win +%d coins. A wrong answer ends the quiz and you keep only half of your unbanked coins." % _next_reward()
+	hint_label.text = "Getting your next question..."
 	_update_labels()
+
+	_request_question()
 
 
 func _on_answer(i):
-	if answered:
-		return
+	if answered or is_loading:		return
+
 	answered = true
-	for b in answer_buttons:
-		b.disabled = true
-	answer_buttons[current["correct"]].modulate = Color(0.5, 1.0, 0.5)
-	if i == current["correct"]:
-		GameState.streak += 1
-		GameState.temp_coins += 10 * GameState.streak
-		explanation_label.text = "Correct! " + current["explanation"]
+	is_loading = true
+	selected_answer_index = i
+
+	for b in answer_buttons:		b.disabled = true
+
+	request_type = "answer"
+
+	var answer_keys = ["A", "B", "C", "D"]
+
+	var request_data = {		"question_id": current_question_id,		"answer": answer_keys[i]
+	}
+
+	var headers = ["Content-Type: application/json"]
+	var endpoint = "/quiz/guest/answer"
+
+	if GameState.logged_in:		
+		headers.append("Authorization: Bearer " + GameState.token)		
+		endpoint = "/quiz/answer"
+
+	var error = http.request(		BASE_URL + endpoint,		headers,		HTTPClient.METHOD_POST,
+		JSON.stringify(request_data)
+	)
+
+	if error != OK:
+		is_loading = false
+		answered = false
+
+		for b in answer_buttons:
+			b.disabled = false
+
+		hint_label.text = "Could not submit your answer."
+		
+func _show_answer_result(i, data):
+	var is_correct = data.get("correct", false)
+	var correct_key = data.get("correct_answer", "")
+	var answer_keys = ["A", "B", "C", "D"]
+	var correct_index = answer_keys.find(correct_key)
+
+	if correct_index >= 0:
+		answer_buttons[correct_index].modulate = Color(0.5, 1.0, 0.5)
+
+	var explanation = data.get("explanation", "")
+
+	if is_correct:
+		if GameState.logged_in:
+			GameState.streak = data.get("current_streak", 0)
+			GameState.temp_coins = data.get("session_coins", 0)
+			GameState.coins = data.get("player_total_coins", GameState.coins)
+			GameState.best_wave = data.get("best_streak", GameState.best_wave)
+		else:
+			GameState.streak += 1
+			GameState.temp_coins += data.get("reward", 0)
+
+		explanation_label.text = "Correct! " + explanation
 		bank_button.text = "BANK  +%d coins" % GameState.temp_coins
 		continue_button.text = "RISK IT  (next +%d)" % _next_reward()
 		bank_button.visible = true
 		continue_button.visible = true
 		hint_label.text = "Bank to keep all your coins, or risk them for more. A wrong answer keeps only half."
+
 	else:
 		answer_buttons[i].modulate = Color(1.0, 0.4, 0.4)
+
 		var at_risk_now = GameState.temp_coins
-		var kept = floori(at_risk_now / 2.0)
-		GameState.coins += kept
+		var kept = 0
+
+		if GameState.logged_in:
+			kept = data.get("earned_coins", 0)
+			GameState.coins = data.get("player_total_coins", GameState.coins)
+		else:
+			kept = floori(at_risk_now / 2.0)
+			GameState.coins += kept
+
 		GameState.temp_coins = 0
 		GameState.streak = 0
 		failed = true
-		explanation_label.text = "Wrong! " + current["explanation"]
+
+		explanation_label.text = "Wrong! " + explanation
 		continue_button.text = "Close"
 		bank_button.visible = false
 		continue_button.visible = true
+
 		if at_risk_now > 0:
 			hint_label.text = "You had %d coins at risk and kept half: +%d coins." % [at_risk_now, kept]
 		else:
 			hint_label.text = "No coins were at risk this time."
+
 	leave_button.visible = false
 	_update_labels()
 
@@ -399,12 +318,37 @@ func _on_continue():
 		_next_question()
 
 
+
 func _on_bank():
+	if GameState.logged_in:
+		if is_loading:
+			return
+
+		is_loading = true
+		request_type = "cashout"
+
+		var headers = [
+			"Authorization: Bearer " + GameState.token
+		]
+
+		var error = http.request(
+			BASE_URL + "/quiz/cashout",
+			headers,
+			HTTPClient.METHOD_POST
+		)
+
+		if error != OK:
+			is_loading = false
+			hint_label.text = "Could not bank your coins."
+		return
+
+	# Guest banking stays local
 	GameState.coins += GameState.temp_coins
 	GameState.temp_coins = 0
 	GameState.streak = 0
 	_update_labels()
 	visible = false
+
 
 
 func _on_leave():
@@ -421,3 +365,100 @@ func _update_labels():
 
 func _on_visibility_changed():
 	get_tree().paused = visible
+
+func _on_api_request_completed(result, response_code, _headers, body):
+	is_loading = false
+	if result != HTTPRequest.RESULT_SUCCESS:
+		hint_label.text = "Could not connect to the server."
+		return
+	var data = JSON.parse_string(body.get_string_from_utf8())
+	
+	if typeof(data) != TYPE_DICTIONARY:
+		hint_label.text = "Invalid response from server."
+		return
+	if response_code != 200:
+		hint_label.text = str(data.get("detail", "Something went wrong."))
+		return
+		
+	if request_type == "cashout":
+		GameState.coins = data.get(
+			"player_total_coins",
+			GameState.coins
+		)
+		GameState.temp_coins = 0
+		GameState.streak = 0
+
+		_update_labels()
+		visible = false
+		return
+
+	if request_type == "start":
+		_request_question()
+		return
+	if request_type == "question":
+		answered = false
+		failed = false
+		current_question_id = data.get("id", -1)
+		
+	if request_type == "answer":
+		_show_answer_result(selected_answer_index, data)
+		return
+
+	current = {
+		"q": data.get("question", ""),
+		"choices": [
+			data.get("options", {}).get("A", ""),
+			data.get("options", {}).get("B", ""),
+			data.get("options", {}).get("C", ""),
+			data.get("options", {}).get("D", "")
+		],
+		
+	}
+	question_label.text = current["q"]
+
+	for i in 4:
+		answer_buttons[i].text = current["choices"][i]
+		answer_buttons[i].disabled = false
+
+	hint_label.text = "Answer correctly to earn coins. A wrong answer ends the quiz and you keep half of your unbanked coins."
+		
+func _request_question():
+	if is_loading:
+		return
+
+	is_loading = true
+	request_type = "question"
+
+	var url = BASE_URL + "/quiz/guest/question?current_streak=" + str(GameState.streak)
+	var headers = []
+
+	if GameState.logged_in:
+		url = BASE_URL + "/quiz/question"
+		headers = ["Authorization: Bearer " + GameState.token]
+
+	var error = http.request(url, headers, HTTPClient.METHOD_GET)
+
+	if error != OK:
+		is_loading = false
+		hint_label.text = "Could not send question request."
+		
+
+func _start_registered_quiz():
+	if is_loading:
+		return
+
+	is_loading = true
+	request_type = "start"
+
+	var headers = ["Authorization: Bearer " + GameState.token]
+
+	var error = http.request(
+		BASE_URL + "/quiz/start",
+		headers,
+		HTTPClient.METHOD_POST
+	)
+
+	if error != OK:
+		is_loading = false
+		hint_label.text = "Could not start quiz session."
+		

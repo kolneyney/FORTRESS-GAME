@@ -1,17 +1,18 @@
+
 from datetime import datetime, timedelta
 import os
-from jose import jwt
+import re
+
+from jose import jwt, JWTError
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-import random
-import secrets
-import re
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from passlib.context import CryptContext
+
 from .database import get_db
-from .models import User, Player
+from .models import User, Player, PlayerDefense
 
 
 load_dotenv()
@@ -25,15 +26,15 @@ router = APIRouter(
     tags=["Auth"]
 )
 
-
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto"
 )
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
+# Create a JWT for a registered user.
 def create_access_token(user_id: int):
     expire = datetime.utcnow() + timedelta(
         minutes=JWT_EXPIRE_MINUTES
@@ -50,15 +51,21 @@ def create_access_token(user_id: int):
         algorithm=JWT_ALGORITHM
     )
 
+
+# Get the registered user from their JWT.
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    token = credentials.credentials
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
 
     try:
         payload = jwt.decode(
-            token,
+            credentials.credentials,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM]
         )
@@ -75,128 +82,53 @@ def get_current_user(
             User.id == int(user_id)
         ).first()
 
-        if not user:
+        if not user or user.is_guest:
             raise HTTPException(
                 status_code=401,
-                detail="User not found"
+                detail="Registered account not found"
             )
+
+        # Update the registered user's activity.
+        user.last_active = datetime.utcnow()
+        db.commit()
 
         return user
 
-    except Exception:
+    except HTTPException:
+        raise
+
+    except (JWTError, ValueError, TypeError):
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired authentication token"
         )
 
-@router.get("/me")
-def get_me(
-    current_user: User = Depends(get_current_user)
-):
-    return {
-        "user_id": current_user.id,
-        "username": current_user.username,
-        "is_guest": current_user.is_guest,
-        "player_id": current_user.player.id,
-        "coins": current_user.player.coins
-    }
+
+# Request models.
+class DefenseProgress(BaseModel):
+    name: str
+    level: int = Field(ge=0, le=5)
+
+
+class GuestProgress(BaseModel):
+    coins: int = Field(default=0, ge=0)
+    current_streak: int = Field(default=0, ge=0)
+    best_streak: int = Field(default=0, ge=0)
+    defenses: list[DefenseProgress] = Field(default_factory=list)
 
 
 class RegisterRequest(BaseModel):
     username: str
     password: str
+    guest_progress: GuestProgress | None = None
+
 
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-@router.post("/guest")
-def create_guest(
-    db: Session = Depends(get_db)
-):
-    while True:
-        guest_number = random.randint(10000, 99999)
-        guest_username = f"guest_{guest_number}"
 
-        existing_user = db.query(User).filter(
-            User.username == guest_username
-        ).first()
-
-        if not existing_user:
-            break
-
-    guest_token = secrets.token_urlsafe(32)
-
-    user = User(
-        username=guest_username,
-        is_guest=True,
-        guest_token=guest_token
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    player = Player(
-        user_id=user.id,
-        coins=0,
-        fortress_level=1,
-        current_streak=0,
-        best_streak=0
-    )
-
-    db.add(player)
-    db.commit()
-    db.refresh(player)
-
-    from .defense import initialize_defenses
-
-    initialize_defenses(player.id, db)
-
-    access_token = create_access_token(user.id)
-
-    return {
-        "message": "Guest player created!",
-        "user_id": user.id,
-        "player_id": player.id,
-        "username": user.username,
-        "guest_token": user.guest_token,
-        "access_token": access_token,
-        "token_type": "bearer",
-        "is_guest": True,
-        "coins": player.coins
-    }
-
-
-@router.get("/guest/{guest_token}")
-def get_guest(
-    guest_token: str,
-    db: Session = Depends(get_db)
-):
-    user = db.query(User).filter(
-        User.guest_token == guest_token,
-        User.is_guest == True
-    ).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="Guest account not found"
-        )
-
-    return {
-        "user_id": user.id,
-        "player_id": user.player.id,
-        "username": user.username,
-        "is_guest": user.is_guest,
-        "coins": user.player.coins
-    }
-
-def is_valid_email(email: str) -> bool:
-    pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-    return re.match(pattern, email) is not None
-
-
+# Password validation.
 def is_valid_password(password: str) -> bool:
     return (
         len(password) >= 8
@@ -207,6 +139,24 @@ def is_valid_password(password: str) -> bool:
     )
 
 
+@router.get("/me")
+def get_me(current_user=Depends(get_current_user)):
+    player = current_user.player
+
+    if not player:
+        raise HTTPException(status_code=404, detail="Player profile not found")
+
+    return {
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "is_guest": current_user.is_guest,
+        "player_id": player.id,
+        "coins": player.coins,
+        "current_streak": player.current_streak,
+        "best_streak": player.best_streak
+    }
+
+# Register a new account.
 @router.post("/register")
 def register(
     data: RegisterRequest,
@@ -246,6 +196,36 @@ def register(
             detail="Username already exists"
         )
 
+    progress = data.guest_progress
+
+    # Validate guest defense information.
+    valid_defenses = {
+        "Firewall",
+        "Antivirus",
+        "MFA",
+        "Backup"
+    }
+
+    defense_levels = {}
+
+    if progress:
+        for defense in progress.defenses:
+
+            if defense.name not in valid_defenses:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid defense: {defense.name}"
+                )
+
+            if defense.name in defense_levels:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Duplicate defense: {defense.name}"
+                )
+
+            defense_levels[defense.name] = defense.level
+
+    # Create the registered account.
     try:
         user = User(
             username=username,
@@ -256,21 +236,43 @@ def register(
         db.add(user)
         db.flush()
 
+        # Create the player and transfer guest progress.
         player = Player(
             user_id=user.id,
-            coins=0,
+            coins=progress.coins if progress else 0,
             fortress_level=1,
-            current_streak=0,
-            best_streak=0
+            current_streak=(
+                progress.current_streak if progress else 0
+            ),
+            best_streak=(
+                max(progress.best_streak, progress.current_streak)
+                if progress else 0
+            )
         )
 
         db.add(player)
         db.flush()
 
-        from .defense import initialize_defenses
-        initialize_defenses(player.id, db)
+        # Create the four defense records.
+        from .defense import DEFENSE_PRICES
 
+        for defense_name, base_price in DEFENSE_PRICES.items():
+
+            level = defense_levels.get(defense_name, 0)
+
+            defense = PlayerDefense(
+                player_id=player.id,
+                defense_name=defense_name,
+                price=base_price,
+                level=level,
+                is_owned=level > 0
+            )
+
+            db.add(defense)
+
+        # Save everything together.
         db.commit()
+
         db.refresh(user)
         db.refresh(player)
 
@@ -284,37 +286,34 @@ def register(
             "player_id": player.id,
             "username": user.username,
             "is_guest": False,
-            "coins": player.coins
+            "coins": player.coins,
+            "current_streak": player.current_streak,
+            "best_streak": player.best_streak
         }
 
-    except HTTPException:
-        db.rollback()
-        raise
     except Exception:
         db.rollback()
+
         raise HTTPException(
             status_code=500,
             detail="Registration failed. Please try again."
         )
 
 
+# Login with username and password.
 @router.post("/login")
 def login(
     data: LoginRequest,
     db: Session = Depends(get_db)
 ):
+    username = data.username.strip()
+
     user = db.query(User).filter(
-        User.username == data.username,
+        User.username == username,
         User.is_guest == False
     ).first()
 
-    if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid username or password"
-        )
-
-    if not user.password_hash:
+    if not user or not user.password_hash:
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password"
@@ -326,6 +325,9 @@ def login(
             detail="Invalid username or password"
         )
 
+    user.last_active = datetime.utcnow()
+    db.commit()
+
     access_token = create_access_token(user.id)
 
     return {
@@ -334,7 +336,7 @@ def login(
         "token_type": "bearer",
         "user_id": user.id,
         "username": user.username,
-        "is_guest": user.is_guest,
+        "is_guest": False,
         "player_id": user.player.id,
         "coins": user.player.coins
     }

@@ -174,6 +174,10 @@ func _on_submit():
 		GameState.token = ""
 		GameState.username = ""
 		GameState.logged_in = false
+
+		GameState.reset()
+		GameState.best_wave = 0
+
 		logged_in.emit("")
 		_set_mode("login")
 		return
@@ -195,7 +199,37 @@ func _on_submit():
 	add_child(http)
 	http.request_completed.connect(_on_done.bind(http, uname))
 
-	var body = JSON.stringify({"username": uname, "password": pw})
+	var request_data = {
+	"username": uname,
+	"password": pw
+}
+
+	if mode == "register":
+		request_data["guest_progress"] = {
+			"coins": GameState.coins,
+			"current_streak": GameState.streak,
+			"best_streak": GameState.best_wave,
+			"defenses": [
+				{
+					"name": "Firewall",
+					"level": GameState.levels["firewall"]
+				},
+				{
+					"name": "Antivirus",
+					"level": GameState.levels["antivirus"]
+				},
+				{
+					"name": "MFA",
+					"level": GameState.levels["mfa"]
+				},
+				{
+					"name": "Backup",
+					"level": GameState.levels["backup"]
+				}
+			]
+		}
+	
+	var body = JSON.stringify(request_data)	
 	var err = http.request(BASE_URL + path, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 	if err != OK:
 		http.queue_free()
@@ -222,10 +256,12 @@ func _on_done(result, code, _headers, body, http, uname):
 	if code == 200 and typeof(data) == TYPE_DICTIONARY and data.has("access_token"):
 		GameState.token = data["access_token"]
 		GameState.username = data.get("username", uname)
-		GameState.logged_in = true
-		pass_input.text = ""
-		logged_in.emit(GameState.username)
-		visible = false
+
+		busy = true
+		submit_button.disabled = true
+		message_label.text = "Loading saved progress..."
+
+		_request_player_data()
 		return
 
 	var detail = "Something went wrong (error %d)." % code
@@ -241,3 +277,97 @@ func _on_done(result, code, _headers, body, http, uname):
 
 func _on_visibility_changed():
 	get_tree().paused = visible
+	
+func _request_player_data():
+	var http = HTTPRequest.new()
+	add_child(http)
+
+	http.request_completed.connect(_on_player_data_done.bind(http))
+
+	var headers = [
+		"Authorization: Bearer " + GameState.token
+	]
+
+	var err = http.request(
+		BASE_URL + "/auth/me",
+		headers,
+		HTTPClient.METHOD_GET
+	)
+
+	if err != OK:
+		http.queue_free()
+		_load_failed("Could not retrieve your account data.")
+
+
+func _on_player_data_done(result, code, _headers, body, http):
+	http.queue_free()
+
+	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		_load_failed("Could not load your saved player data.")
+		return
+
+	var player_data = JSON.parse_string(body.get_string_from_utf8())
+
+	if typeof(player_data) != TYPE_DICTIONARY:
+		_load_failed("Invalid player data received.")
+		return
+
+	_request_defenses(player_data)
+
+
+func _request_defenses(player_data):
+	var http = HTTPRequest.new()
+	add_child(http)
+
+	http.request_completed.connect(
+		_on_defenses_done.bind(http, player_data)
+	)
+
+	var headers = [
+		"Authorization: Bearer " + GameState.token
+	]
+
+	var err = http.request(
+		BASE_URL + "/defenses",
+		headers,
+		HTTPClient.METHOD_GET
+	)
+
+	if err != OK:
+		http.queue_free()
+		_load_failed("Could not retrieve your defenses.")
+
+
+func _on_defenses_done(result, code, _headers, body, http, player_data):
+	http.queue_free()
+
+	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		_load_failed("Could not load your saved defenses.")
+		return
+
+	var defense_data = JSON.parse_string(body.get_string_from_utf8())
+
+	if typeof(defense_data) != TYPE_DICTIONARY:
+		_load_failed("Invalid defense data received.")
+		return
+
+	GameState.load_player_progress(player_data, defense_data)
+
+	GameState.logged_in = true
+	busy = false
+	submit_button.disabled = false
+	pass_input.text = ""
+
+	logged_in.emit(GameState.username)
+	visible = false
+
+
+func _load_failed(error_message):
+	GameState.token = ""
+	GameState.username = ""
+	GameState.logged_in = false
+
+	busy = false
+	submit_button.disabled = false
+
+	_show_error(error_message)

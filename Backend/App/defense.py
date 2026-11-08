@@ -1,10 +1,10 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import Player, PlayerDefense
+from .models import PlayerDefense
 from .auth import get_current_user
-
 
 
 router = APIRouter(
@@ -13,25 +13,19 @@ router = APIRouter(
 )
 
 
-DEFENSES = [
-    "Firewall",
-    "Antivirus",
-    "MFA",
-    "IDS/IPS",
-    "Backup"
-]
+DEFENSE_PRICES = {
+    "Firewall": 15,
+    "Antivirus": 25,
+    "MFA": 50,
+    "Backup": 100
+}
+
+MAX_LEVEL = 5
 
 
 def initialize_defenses(player_id: int, db: Session):
-    prices = {
-        "Firewall": 300,
-        "Antivirus": 500,
-        "MFA": 1500,
-        "IDS/IPS": 3000,
-        "Backup": 5000
-    }
+    for defense_name, base_price in DEFENSE_PRICES.items():
 
-    for defense_name in DEFENSES:
         existing = db.query(PlayerDefense).filter(
             PlayerDefense.player_id == player_id,
             PlayerDefense.defense_name == defense_name
@@ -41,17 +35,19 @@ def initialize_defenses(player_id: int, db: Session):
             defense = PlayerDefense(
                 player_id=player_id,
                 defense_name=defense_name,
-                price=prices[defense_name],
+                price=base_price,
+                level=0,
                 is_owned=False
             )
             db.add(defense)
+        else:
+            existing.price = base_price
 
-    db.commit()
 
 
 @router.get("")
 def get_defenses(
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     player = current_user.player
@@ -73,17 +69,25 @@ def get_defenses(
             {
                 "id": defense.id,
                 "name": defense.defense_name,
+                "level": defense.level,
+                "max_level": MAX_LEVEL,
                 "price": defense.price,
+                "next_upgrade_price": (
+                    defense.price * (defense.level + 1)
+                    if defense.level < MAX_LEVEL
+                    else None
+                ),
                 "is_owned": defense.is_owned
             }
             for defense in defenses
         ]
     }
 
+
 @router.post("/buy/{defense_id}")
 def buy_defense(
     defense_id: int,
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     player = current_user.player
@@ -95,8 +99,8 @@ def buy_defense(
         )
 
     defense = db.query(PlayerDefense).filter(
-    PlayerDefense.id == defense_id,
-    PlayerDefense.player_id == player.id
+        PlayerDefense.id == defense_id,
+        PlayerDefense.player_id == player.id
     ).first()
 
     if not defense:
@@ -105,27 +109,40 @@ def buy_defense(
             detail="Defense not found"
         )
 
-    if defense.is_owned:
+    if defense.level >= MAX_LEVEL:
         raise HTTPException(
             status_code=400,
-            detail="Defense already owned"
+            detail="Defense has already reached maximum level"
         )
 
-    if player.coins < defense.price:
+    upgrade_price = defense.price * (2 ** defense.level)
+
+    if player.coins < upgrade_price:
         raise HTTPException(
             status_code=400,
             detail="Not enough coins"
         )
 
-    player.coins -= defense.price
-    defense.is_owned = True
+    player.coins -= upgrade_price
+    defense.level += 1
+    defense.is_owned = defense.level > 0
 
     db.commit()
+    db.refresh(defense)
+    db.refresh(player)
+
+    next_price = (
+        defense.price * (defense.level + 1)
+        if defense.level < MAX_LEVEL
+        else None
+    )
 
     return {
-        "message": "Defense purchased successfully!",
+        "message": "Defense upgraded successfully!",
         "defense": defense.defense_name,
-        "price": defense.price,
+        "level": defense.level,
+        "price_paid": upgrade_price,
+        "next_upgrade_price": next_price,
         "remaining_coins": player.coins,
         "is_owned": defense.is_owned
     }

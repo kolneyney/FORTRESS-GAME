@@ -176,6 +176,11 @@ class QuizQuestion(Base):
         DateTime,
         default=datetime.utcnow
     )
+    
+    last_shown_at: Mapped[datetime | None] = mapped_column(
+    DateTime,
+    nullable=True
+)
 
 class QuizSession(Base):
     __tablename__ = "quiz_sessions"
@@ -235,6 +240,12 @@ class PlayerDefense(Base):
 
     price: Mapped[int] = mapped_column(
         Integer,
+        nullable=False
+    )
+
+    level: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
         nullable=False
     )
 

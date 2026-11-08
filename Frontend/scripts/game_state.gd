@@ -47,3 +47,15 @@ func reduce_damage(amount):
 	for k in levels:
 		total += levels[k]
 	return int(round(amount * (1.0 - min(total * 0.05, 0.8))))
+	
+func load_player_progress(player_data, defense_data):
+	coins = player_data.get("coins", 0)
+	streak = player_data.get("current_streak", 0)
+	best_wave = player_data.get("best_streak", 0)
+	temp_coins = 0
+
+	for defense in defense_data.get("defenses", []):
+		var defense_name = defense.get("name", "").to_lower()
+
+		if levels.has(defense_name):
+			levels[defense_name] = defense.get("level", 0)

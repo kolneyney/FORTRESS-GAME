@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+import random, datetime
 
 from .database import get_db
 from .models import QuizQuestion, Player, QuizSession
@@ -40,6 +41,37 @@ def get_base_reward(difficulty: int) -> int:
     }
 
     return rewards.get(difficulty, 10)
+
+def get_next_question(db: Session, difficulty: int):
+    questions = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.difficulty == difficulty,
+            QuizQuestion.status == "approved"
+        )
+        .all()
+    )
+
+    if not questions:
+        return None
+
+    oldest_time = min(
+        q.last_shown_at or datetime.datetime.min
+        for q in questions
+    )
+
+    candidates = [
+        q for q in questions
+        if (q.last_shown_at or datetime.datetime.min) == oldest_time
+    ]
+
+    question = random.choice(candidates)
+
+    question.last_shown_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(question)
+
+    return question
 
 
 @router.post("/start")
@@ -131,8 +163,8 @@ def get_question(
             detail="No approved questions available for this difficulty"
         )
 
-    import random
-    question = random.choice(questions)
+    
+    question = get_next_question(db, difficulty)
 
     return {
         "id": question.id,
@@ -151,6 +183,43 @@ def get_question(
         "player_total_coins": player.coins
     }
 
+
+@router.get("/guest/question")
+def get_guest_question(
+    current_streak: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    difficulty = get_difficulty_from_streak(current_streak)
+
+    questions = (
+        db.query(QuizQuestion)
+        .filter(
+            QuizQuestion.difficulty == difficulty,
+            QuizQuestion.status == "approved"
+        )
+        .all()
+    )
+
+    if not questions:
+        raise HTTPException(
+            status_code=404,
+            detail="No approved questions available for this difficulty"
+        )
+
+    question = get_next_question(db, difficulty)
+
+    return {
+        "id": question.id,
+        "question": question.question,
+        "options": {
+            "A": question.option_a,
+            "B": question.option_b,
+            "C": question.option_c,
+            "D": question.option_d
+        },
+        "difficulty": question.difficulty,
+        "topic": question.topic
+    }
 
 @router.post("/answer")
 def submit_answer(
@@ -211,6 +280,8 @@ def submit_answer(
             "correct": True,
             "message": "Correct answer!",
             "reward": reward,
+            "explanation": question.explanation,
+            "correct_answer": question.correct_answer.upper(),
             "session_coins": session.temporary_reward,
             "player_total_coins": player.coins,
             "current_streak": session.current_streak,
@@ -235,6 +306,7 @@ def submit_answer(
             "correct": False,
             "message": "Wrong answer! Game over!",
             "reward": 0,
+            "explanation": question.explanation,
             "session_coins": session_coins,
             "earned_coins": earned_coins,
             "player_total_coins": player.coins,
@@ -242,6 +314,48 @@ def submit_answer(
             "best_streak": player.best_streak,
             "game_over": True
         }
+
+
+@router.post("/guest/answer")
+def submit_guest_answer(
+    answer_data: AnswerRequest,
+    db: Session = Depends(get_db)
+):
+    question = db.query(QuizQuestion).filter(
+        QuizQuestion.id == answer_data.question_id,
+        QuizQuestion.status == "approved"
+    ).first()
+
+    if not question:
+        raise HTTPException(
+            status_code=404,
+            detail="Question not found"
+        )
+
+    is_correct = (
+        answer_data.answer.strip().upper()
+        == question.correct_answer.strip().upper()
+    )
+
+    if is_correct:
+        reward = get_base_reward(question.difficulty)
+
+        return {
+            "correct": True,
+            "message": "Correct answer!",
+            "reward": reward,
+            "explanation": question.explanation,
+            "correct_answer": question.correct_answer.upper(),
+            "game_over": False
+        }
+
+    return {
+        "correct": False,
+        "message": "Wrong answer! Game over!",
+        "reward": 0,
+        "explanation": question.explanation,
+        "game_over": True
+    }
 
 
 @router.post("/cashout")
