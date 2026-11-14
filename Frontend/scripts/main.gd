@@ -85,6 +85,11 @@ func _ready():
 	login_button.pressed.connect(login_page.open)
 	login_page.logged_in.connect(func(n): login_button.text = n if n != "" else "Login")
 
+	
+	var start_page = preload("res://scripts/start_ui.gd").new()
+	$UI.add_child(start_page)
+	start_page.setup(login_page)
+
 	call_button = _button("Call Wave (+1-5)", 28, 60)
 	call_button.pressed.connect(_on_call_wave)
 	$UI/HUD.add_child(call_button)
