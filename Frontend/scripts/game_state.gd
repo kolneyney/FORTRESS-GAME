@@ -1,12 +1,19 @@
 extends Node
 
 # coins you start every run with (set to 200 while testing, 0 for the real game)
-const START_COINS = 0
+const START_COINS = 1000
 
 var coins = START_COINS
 var temp_coins = 0
 var streak = 0
 var best_wave = 0
+
+# level progress (survives Retry and Continue while the game is open)
+var current_level = 1
+var best_level = 0
+var castle_hp = 100
+var level_start_hp = 100
+var pending_heal = 0
 
 # login info (filled in by the login page)
 var token = ""
@@ -14,17 +21,25 @@ var username = ""
 var logged_in = false
 
 var levels = {"firewall": 0, "antivirus": 0, "mfa": 0, "backup": 0}
-const BASE_PRICE = {"firewall": 15, "antivirus": 25, "mfa": 50, "backup": 100}
+const BASE_PRICE = {"firewall": 15, "antivirus": 25, "mfa": 40, "backup": 60}
 const MAX_LEVEL = 5
 
-
-func reset():
+func new_game():
 	coins = START_COINS
 	temp_coins = 0
 	streak = 0
+	current_level = 1
+	best_level = 0
+	castle_hp = 100
+	level_start_hp = 100
+	pending_heal = 0
 	for k in levels:
 		levels[k] = 0
+	castle_hp = 100
+	level_start_hp = 100
 
+func reset():
+	new_game()
 
 func price_of(defense):
 	return BASE_PRICE[defense] * (levels[defense] + 1)
