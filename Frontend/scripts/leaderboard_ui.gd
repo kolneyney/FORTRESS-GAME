@@ -13,7 +13,7 @@ const MAX_ROWS = 10
 #     GET  /leaderboard        -> {"entries": [{"username": "Apple", "score": 120, "level": 3}, ...]}
 #     POST /leaderboard/score  -> body {"score": 120, "level": 3}, needs the login token
 # ---------------------------------------------------------------
-var backend_enabled = false
+var backend_enabled = true
 
 var entries = []
 var grid
@@ -131,32 +131,32 @@ func _on_close():
 # ---------- saving a score (called by main.gd when a level is cleared) ----------
 
 # returns "guest", "saved", "lower" or "sent"
-func submit_score(score, level):
+func submit_score(coins, level):
 	if not GameState.logged_in:
 		return "guest"
 	if backend_enabled:
-		_request(HTTPClient.METHOD_POST, "/leaderboard/score", {"score": score, "level": level}, _on_score_sent.bind(score, level))
+		_request(HTTPClient.METHOD_POST, "/leaderboard/score", {"coins": coins, "level": level}, _on_score_sent.bind(coins, level))
 		return "sent"
-	return _save_local_score(score, level)
+	return _save_local_score(coins, level)
 
 
-func _on_score_sent(result, code, _data, score, level):
+func _on_score_sent(result, code, _data, coins, level):
 	# if the server could not take it, keep it on this computer instead
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-		_save_local_score(score, level)
+		_save_local_score(coins, level)
 
 
-func _save_local_score(score, level):
+func _save_local_score(coins, level):
 	_load_local()
 	for e in entries:
 		if str(e.get("username", "")) == GameState.username:
-			if score > int(e.get("score", 0)):
-				e["score"] = score
+			if coins > int(e.get("coins", 0)):
+				e["coins"] = coins
 				e["level"] = level
 				_write_local()
 				return "saved"
 			return "lower"
-	entries.append({"username": GameState.username, "score": score, "level": level})
+	entries.append({"username": GameState.username, "coins": coins, "level": level})
 	_write_local()
 	return "saved"
 
@@ -247,7 +247,7 @@ func _show_rows():
 	_cell("Level", dim, 100, 22, left)
 
 	var sorted = entries.duplicate()
-	sorted.sort_custom(func(a, b): return int(a.get("score", 0)) > int(b.get("score", 0)))
+	sorted.sort_custom(func(a, b): return int(a.get("coins", 0)) > int(b.get("coins", 0)))
 
 	var shown = mini(sorted.size(), MAX_ROWS)
 	for i in shown:
@@ -264,7 +264,7 @@ func _show_rows():
 			color = Color(0.5, 1.0, 1.0)
 		_cell("#%d" % (i + 1), color, 90, 28, left)
 		_cell(who, color, 360, 28, left)
-		_score_cell(int(e.get("score", 0)), color)
+		_score_cell(int(e.get("coins", 0)), color)
 		_cell("Lv %d" % int(e.get("level", 1)), color, 100, 28, left)
 
 	if shown == 0:
@@ -289,7 +289,7 @@ func _update_note():
 	if mine == null:
 		note_label.text = "%s, clear a level to get on the board." % GameState.username
 	else:
-		note_label.text = "Your best: %d coins (level %d)" % [int(mine.get("score", 0)), int(mine.get("level", 1))]
+		note_label.text = "Your best: %d coins (level %d)" % [int(mine.get("coins", 0)), int(mine.get("level", 1))]
 	note_label.add_theme_color_override("font_color", Color(0.5, 1.0, 1.0))
 
 

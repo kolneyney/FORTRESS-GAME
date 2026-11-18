@@ -1,7 +1,7 @@
 extends Node
 
-# coins you start every run with (set to 200 while testing, 0 for the real game)
-const START_COINS = 1000
+
+const START_COINS = 0
 
 var coins = START_COINS
 var temp_coins = 0
@@ -25,11 +25,9 @@ const BASE_PRICE = {"firewall": 15, "antivirus": 25, "mfa": 40, "backup": 60}
 const MAX_LEVEL = 5
 
 func new_game():
-	coins = START_COINS
 	temp_coins = 0
 	streak = 0
 	current_level = 1
-	best_level = 0
 	castle_hp = 100
 	level_start_hp = 100
 	pending_heal = 0
@@ -39,6 +37,17 @@ func new_game():
 	level_start_hp = 100
 
 func reset():
+	new_game()
+	
+func clear_session():
+	coins = START_COINS
+	best_level = 0
+	best_wave = 0
+
+	token = ""
+	username = ""
+	logged_in = false
+
 	new_game()
 
 func price_of(defense):
@@ -65,6 +74,7 @@ func reduce_damage(amount):
 	
 func load_player_progress(player_data, defense_data):
 	coins = player_data.get("coins", 0)
+	best_level = player_data.get("best_level", 0)
 	streak = player_data.get("current_streak", 0)
 	best_wave = player_data.get("best_streak", 0)
 	temp_coins = 0

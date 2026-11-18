@@ -288,7 +288,8 @@ def register(
             "is_guest": False,
             "coins": player.coins,
             "current_streak": player.current_streak,
-            "best_streak": player.best_streak
+            "best_streak": player.best_streak,
+            "best_level": player.best_level
         }
 
     except Exception:

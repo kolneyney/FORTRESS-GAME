@@ -171,12 +171,7 @@ func _on_submit():
 		return
 
 	if GameState.logged_in:
-		GameState.token = ""
-		GameState.username = ""
-		GameState.logged_in = false
-
-		GameState.reset()
-		GameState.best_wave = 0
+		GameState.clear_session()
 
 		logged_in.emit("")
 		_set_mode("login")
@@ -254,6 +249,7 @@ func _on_done(result, code, _headers, body, http, uname):
 	var data = JSON.parse_string(body.get_string_from_utf8())
 
 	if code == 200 and typeof(data) == TYPE_DICTIONARY and data.has("access_token"):
+		GameState.clear_session()
 		GameState.token = data["access_token"]
 		GameState.username = data.get("username", uname)
 
@@ -363,9 +359,7 @@ func _on_defenses_done(result, code, _headers, body, http, player_data):
 
 
 func _load_failed(error_message):
-	GameState.token = ""
-	GameState.username = ""
-	GameState.logged_in = false
+	GameState.clear_session()
 
 	busy = false
 	submit_button.disabled = false

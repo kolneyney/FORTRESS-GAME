@@ -79,6 +79,12 @@ class Player(Base):
         nullable=False
     )
 
+    best_level: Mapped[int] = mapped_column(
+    Integer,
+    default=0,
+    nullable=False
+    )
+
     current_streak: Mapped[int] = mapped_column(
         Integer,
         default=0,

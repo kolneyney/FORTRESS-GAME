@@ -358,7 +358,7 @@ func _on_leave():
 
 
 func _update_labels():
-	bank_label.text = "Bank: %d" % GameState.coins
+	bank_label.text = "Bank: %d" % GameState.temp_coins
 	streak_label.text = "Streak: %d" % GameState.streak
 	risk_label.text = "At risk: %d" % GameState.temp_coins
 
