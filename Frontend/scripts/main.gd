@@ -37,6 +37,8 @@ var done_timer = 0.0
 var bonus_given = 0
 var heal_given = 0
 var board_result = ""
+var overlay
+var continue_button
 
 var status_label
 var board_page
@@ -96,7 +98,7 @@ func _ready():
 	coin_box.add_child(hud_coin)
 	coins_label.reparent(coin_box)
 
-	# leaderboard page and its button (replaces the old Call Enemies button)
+	# leaderboard page and its button
 	board_page = preload("res://scripts/leaderboard_ui.gd").new()
 	$UI.add_child(board_page)
 	var board_button = _button("Leaderboard", 28, 60)
@@ -168,6 +170,12 @@ func _process(delta):
 			state = "box"
 			_show_level_box()
 
+	elif state == "waiting":
+		if level >= LEVELS.size():
+			status_label.text = "All levels complete! Visit the Quiz or Shop, or play again."
+		else:
+			status_label.text = "Level %d cleared! Preapre Defenses, then continue." % level
+
 
 func start_level():
 	state = "fight"
@@ -231,7 +239,7 @@ func _on_health_changed(h):
 
 
 func _game_over():
-	if state == "over" or state == "box" or state == "cleared":
+	if state == "over" or state == "box" or state == "cleared" or state == "waiting":
 		return
 	state = "over"
 	$SpawnTimer.stop()
@@ -287,6 +295,7 @@ func _make_overlay():
 	var layer = Control.new()
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.z_index = 120
+	overlay = layer
 	$UI.add_child(layer)
 	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -394,6 +403,10 @@ func _show_level_box():
 	restart.pressed.connect(_on_retry)
 	box.add_child(restart)
 
+	var later = _button("Close and Preparation First", 26, 64)
+	later.pressed.connect(_on_close_box)
+	box.add_child(later)
+
 
 func _show_defeat_box():
 	var box = _make_overlay()
@@ -410,6 +423,47 @@ func _show_defeat_box():
 	var over = _button("Start Over (Level 1)", 28, 60)
 	over.pressed.connect(_on_start_over)
 	box.add_child(over)
+
+
+# close the level box so the player can use the quiz or shop, then continue
+func _on_close_box():
+	if overlay != null:
+		overlay.queue_free()
+		overlay = null
+	get_tree().paused = false
+	state = "waiting"
+	_show_continue_button()
+
+
+# gold button at the bottom of the screen that starts the next level
+func _show_continue_button():
+	if continue_button != null:
+		continue_button.queue_free()
+	var last = level >= LEVELS.size()
+	var text = "Continue to Level %d" % (level + 1)
+	if last:
+		text = "Play Again"
+
+	continue_button = _button(text, 40, 90)
+	continue_button.z_index = 50
+	$UI.add_child(continue_button)
+	continue_button.anchor_left = 0.5
+	continue_button.anchor_right = 0.5
+	continue_button.anchor_top = 1.0
+	continue_button.anchor_bottom = 1.0
+	continue_button.offset_left = -270
+	continue_button.offset_right = 270
+	continue_button.offset_top = -170
+	continue_button.offset_bottom = -80
+	if last:
+		continue_button.pressed.connect(_on_start_over)
+	else:
+		continue_button.pressed.connect(_on_next)
+
+	var tw = continue_button.create_tween()
+	tw.set_loops()
+	tw.tween_property(continue_button, "modulate", Color(1.0, 0.95, 0.6), 0.7)
+	tw.tween_property(continue_button, "modulate", Color.WHITE, 0.7)
 
 
 func _on_next():
