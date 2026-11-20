@@ -2,6 +2,7 @@ extends Node2D
 
 const FONT_PATH = "res://assets/fonts/PixeloidSans-lxa3y.ttf"
 const COIN_SCRIPT = preload("res://scripts/coin_icon.gd")
+const HEART_SCRIPT = preload("res://scripts/heart_icon.gd")
 
 # seconds to shop or take the quiz before each level starts
 const PREP_TIME = 20.0
@@ -38,10 +39,12 @@ var bonus_given = 0
 var heal_given = 0
 var board_result = ""
 var overlay
-var continue_button
+var overlay_fx
+var prep_bar
 
 var status_label
 var board_page
+var heart
 
 
 func _label(text, font_size):
@@ -58,7 +61,126 @@ func _button(text, font_size, height):
 	b.custom_minimum_size = Vector2(0, height)
 	b.add_theme_font_override("font", load(FONT_PATH))
 	b.add_theme_font_size_override("font_size", font_size)
+	_juice(b)
 	return b
+
+
+# a button with a small beating heart on each side
+func _heart_button(text, font_size, height):
+	var b = _button(text, font_size, height)
+	var s = 34.0
+	for side in 2:
+		var h = HEART_SCRIPT.new()
+		h.icon_size = s
+		b.add_child(h)
+		h.anchor_top = 0.5
+		h.anchor_bottom = 0.5
+		h.offset_top = -s / 2.0
+		h.offset_bottom = s / 2.0
+		if side == 0:
+			h.anchor_left = 0.0
+			h.anchor_right = 0.0
+			h.offset_left = 22.0
+			h.offset_right = 22.0 + s
+		else:
+			h.anchor_left = 1.0
+			h.anchor_right = 1.0
+			h.offset_left = -22.0 - s
+			h.offset_right = -22.0
+	return b
+
+
+# ---------- little animations ----------
+
+# the button grows a little while the mouse is over it
+func _juice(b):
+	b.mouse_entered.connect(_hover.bind(b, 1.06))
+	b.mouse_exited.connect(_hover.bind(b, 1.0))
+
+
+func _hover(b, s):
+	b.pivot_offset = b.size / 2.0
+	var tw = b.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.tween_property(b, "scale", Vector2(s, s), 0.1)
+
+
+# the button pops when it is clicked
+func _pop(b):
+	b.pivot_offset = b.size / 2.0
+	b.scale = Vector2(1.18, 1.18)
+	var tw = b.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.tween_property(b, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+# a full-screen page zooms in with a fade every time it opens
+func _watch_page(page):
+	page.visibility_changed.connect(_on_page_visibility.bind(page))
+
+
+func _on_page_visibility(page):
+	if not page.visible:
+		return
+	if page.has_meta("anim"):
+		var old = page.get_meta("anim")
+		if old != null and old.is_valid():
+			old.kill()
+	page.pivot_offset = page.size / 2.0
+	page.modulate.a = 0.0
+	page.scale = Vector2(0.9, 0.9)
+	var tw = page.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.set_parallel(true)
+	tw.tween_property(page, "modulate:a", 1.0, 0.25)
+	tw.tween_property(page, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	page.set_meta("anim", tw)
+
+
+# a box pops in: the panel zooms up, then its rows appear one after another
+func _pop_overlay(layer, panel):
+	layer.modulate.a = 0.0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(layer) or not is_instance_valid(panel):
+		return
+
+	panel.pivot_offset = panel.get_combined_minimum_size() / 2.0
+	panel.scale = Vector2(0.55, 0.55)
+	var tw = layer.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.set_parallel(true)
+	tw.tween_property(layer, "modulate:a", 1.0, 0.2)
+	tw.tween_property(panel, "scale", Vector2.ONE, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+	var box = panel.get_child(0)
+	var i = 0
+	for c in box.get_children():
+		c.modulate.a = 0.0
+		c.pivot_offset = c.get_combined_minimum_size() / 2.0
+		c.scale = Vector2(0.8, 0.8)
+		var t2 = c.create_tween()
+		t2.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		t2.set_parallel(true)
+		t2.tween_property(c, "modulate:a", 1.0, 0.25).set_delay(0.15 + i * 0.08)
+		t2.tween_property(c, "scale", Vector2.ONE, 0.35).set_delay(0.15 + i * 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		i += 1
+
+
+# gold coins fall behind the box
+func _coin_shower(fx, count):
+	var vp = get_viewport_rect().size
+	for i in count:
+		var c = COIN_SCRIPT.new()
+		c.coin_size = randf_range(26.0, 46.0)
+		c.spin = randf_range(2.0, 5.0)
+		fx.add_child(c)
+		c.position = Vector2(randf_range(0.0, vp.x - 50.0), -60.0)
+		var tw = c.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_interval(randf_range(0.0, 0.9))
+		tw.tween_property(c, "position:y", vp.y + 60.0, randf_range(1.8, 3.2))
+		tw.tween_callback(c.queue_free)
 
 
 func _ready():
@@ -79,15 +201,34 @@ func _ready():
 	castle.health_changed.connect(_on_health_changed)
 	castle.castle_destroyed.connect(_game_over)
 	_on_health_changed(castle.health)
-	$UI/HUD/QuizButton.pressed.connect($UI/QuizUI.open)
-	$UI/HUD/ShopButton.pressed.connect($UI/ShopUI.open)
 
-	# top bar: Castle HP, then a spinning coin and the Coins label
+	# quiz and shop buttons: open the page, pop, grow on hover
+	var quiz_button = $UI/HUD/QuizButton
+	var shop_button = $UI/HUD/ShopButton
+	quiz_button.pressed.connect($UI/QuizUI.open)
+	shop_button.pressed.connect($UI/ShopUI.open)
+	_juice(quiz_button)
+	_juice(shop_button)
+	quiz_button.pressed.connect(_pop.bind(quiz_button))
+	shop_button.pressed.connect(_pop.bind(shop_button))
+	_watch_page($UI/QuizUI)
+	_watch_page($UI/ShopUI)
+
+	# top bar: heart + Castle HP, then a spinning coin and the Coins label
 	var top_bar = HBoxContainer.new()
 	top_bar.add_theme_constant_override("separation", 60)
 	top_bar.position = Vector2(30, 20)
 	$UI.add_child(top_bar)
-	health_label.reparent(top_bar)
+
+	var hp_box = HBoxContainer.new()
+	hp_box.add_theme_constant_override("separation", 12)
+	top_bar.add_child(hp_box)
+	heart = HEART_SCRIPT.new()
+	heart.icon_size = 44.0
+	heart.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hp_box.add_child(heart)
+	health_label.reparent(hp_box)
+	_on_health_changed(castle.health)
 
 	var coin_box = HBoxContainer.new()
 	coin_box.add_theme_constant_override("separation", 12)
@@ -101,9 +242,11 @@ func _ready():
 	# leaderboard page and its button
 	board_page = preload("res://scripts/leaderboard_ui.gd").new()
 	$UI.add_child(board_page)
+	_watch_page(board_page)
 	var board_button = _button("Leaderboard", 28, 60)
 	$UI/HUD.add_child(board_button)
 	board_button.pressed.connect(board_page.open)
+	board_button.pressed.connect(_pop.bind(board_button))
 
 	var info_button = _button("Info", 28, 60)
 	info_button.custom_minimum_size = Vector2(130, 60)
@@ -117,7 +260,9 @@ func _ready():
 
 	var info_page = preload("res://scripts/info_ui.gd").new()
 	$UI.add_child(info_page)
+	_watch_page(info_page)
 	info_button.pressed.connect(info_page.open)
+	info_button.pressed.connect(_pop.bind(info_button))
 
 	var login_button = _button("Login", 28, 60)
 	login_button.clip_text = true
@@ -133,7 +278,9 @@ func _ready():
 
 	var login_page = preload("res://scripts/auth_ui.gd").new()
 	$UI.add_child(login_page)
+	_watch_page(login_page)
 	login_button.pressed.connect(login_page.open)
+	login_button.pressed.connect(_pop.bind(login_button))
 	login_page.logged_in.connect(func(n): login_button.text = n if n != "" else "Login")
 
 	var start_page = preload("res://scripts/start_ui.gd").new()
@@ -174,7 +321,7 @@ func _process(delta):
 		if level >= LEVELS.size():
 			status_label.text = "All levels complete! Visit the Quiz or Shop, or play again."
 		else:
-			status_label.text = "Level %d cleared! Preapre Defenses, then continue." % level
+			status_label.text = "Level %d cleared! Visit the Quiz or Shop, then continue." % level
 
 
 func start_level():
@@ -236,6 +383,15 @@ func _level_complete():
 func _on_health_changed(h):
 	health_label.text = "Castle HP: %d" % h
 	GameState.castle_hp = h
+	# low health: the heart beats fast and the text turns red
+	if h <= 30:
+		health_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
+		if heart != null:
+			heart.rate = 3.2
+	else:
+		health_label.remove_theme_color_override("font_color")
+		if heart != null:
+			heart.rate = 1.3
 
 
 func _game_over():
@@ -288,14 +444,11 @@ func _banner(text):
 	tw.chain().tween_callback(l.queue_free)
 
 
-# dark overlay with a framed panel; returns the box to put content in
-func _make_overlay():
-	get_tree().paused = true
-
+# builds a dark overlay with a framed panel and returns its parts
+func _build_overlay(z, width):
 	var layer = Control.new()
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
-	layer.z_index = 120
-	overlay = layer
+	layer.z_index = z
 	$UI.add_child(layer)
 	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -304,12 +457,18 @@ func _make_overlay():
 	layer.add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+	# the coin shower goes here, behind the panel
+	var fx = Control.new()
+	fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(fx)
+	fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
 	var center = CenterContainer.new()
 	layer.add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var panel = PanelContainer.new()
-	panel.custom_minimum_size = Vector2(780, 0)
+	panel.custom_minimum_size = Vector2(width, 0)
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color("2b1d2a")
 	style.border_color = Color("d1c7b7")
@@ -321,7 +480,18 @@ func _make_overlay():
 	var box = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 22)
 	panel.add_child(box)
-	return box
+
+	return {"layer": layer, "fx": fx, "panel": panel, "box": box}
+
+
+# the level-complete and defeat boxes use this; it also pauses the game
+func _make_overlay():
+	get_tree().paused = true
+	var o = _build_overlay(120, 780)
+	overlay = o["layer"]
+	overlay_fx = o["fx"]
+	_pop_overlay(o["layer"], o["panel"])
+	return o["box"]
 
 
 func _centered(text, font_size, color):
@@ -391,21 +561,23 @@ func _show_level_box():
 		box.add_child(_centered(board_text, 22, Color(0.75, 0.7, 0.8)))
 
 	if last:
-		var again = _button("Play Again", 36, 80)
-		again.pressed.connect(_on_start_over)
+		var again = _heart_button("Play Again", 36, 80)
+		again.pressed.connect(_ask_start_over)
 		box.add_child(again)
 	else:
-		var next = _button("Continue to Level %d" % (level + 1), 36, 80)
+		var next = _heart_button("Continue to Level %d" % (level + 1), 36, 80)
 		next.pressed.connect(_on_next)
 		box.add_child(next)
 
-	var restart = _button("Restart Level %d" % level, 30, 64)
-	restart.pressed.connect(_on_retry)
+	var restart = _heart_button("Restart Level %d" % level, 30, 64)
+	restart.pressed.connect(_ask_restart)
 	box.add_child(restart)
 
-	var later = _button("Close and Preparation First", 26, 64)
+	var later = _heart_button("Close  (quiz or shop first)", 26, 64)
 	later.pressed.connect(_on_close_box)
 	box.add_child(later)
+
+	_coin_shower(overlay_fx, 20 if last else 14)
 
 
 func _show_defeat_box():
@@ -421,9 +593,56 @@ func _show_defeat_box():
 	box.add_child(retry)
 
 	var over = _button("Start Over (Level 1)", 28, 60)
-	over.pressed.connect(_on_start_over)
+	over.pressed.connect(_ask_start_over)
 	box.add_child(over)
 
+
+# ---------- "are you sure?" box ----------
+
+func _confirm(title, text, yes_text, on_yes):
+	var o = _build_overlay(140, 700)
+	var box = o["box"]
+
+	box.add_child(_centered(title, 44, Color(1.0, 0.9, 0.3)))
+	box.add_child(_centered(text, 26, Color.WHITE))
+
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	box.add_child(row)
+
+	var yes = _button(yes_text, 30, 72)
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	yes.pressed.connect(on_yes)
+	row.add_child(yes)
+
+	var no = _button("No, go back", 30, 72)
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var layer = o["layer"]
+	no.pressed.connect(func(): layer.queue_free())
+	row.add_child(no)
+
+	_pop_overlay(o["layer"], o["panel"])
+
+
+func _ask_restart():
+	_confirm(
+		"RESTART LEVEL %d?" % level,
+		"Your castle HP goes back to what it was when this level began. Your coins and towers are kept.",
+		"Yes, restart",
+		_on_retry
+	)
+
+
+func _ask_start_over():
+	_confirm(
+		"START OVER?",
+		"You will go back to Level 1 and lose all your coins, towers and progress.",
+		"Yes, start over",
+		_on_start_over
+	)
+
+
+# ---------- after the level box is closed ----------
 
 # close the level box so the player can use the quiz or shop, then continue
 func _on_close_box():
@@ -432,38 +651,63 @@ func _on_close_box():
 		overlay = null
 	get_tree().paused = false
 	state = "waiting"
-	_show_continue_button()
+	_show_prep_bar()
 
 
-# gold button at the bottom of the screen that starts the next level
-func _show_continue_button():
-	if continue_button != null:
-		continue_button.queue_free()
+# bottom bar with Restart and Continue; both bounce in
+func _show_prep_bar():
+	if prep_bar != null and is_instance_valid(prep_bar):
+		prep_bar.queue_free()
 	var last = level >= LEVELS.size()
-	var text = "Continue to Level %d" % (level + 1)
-	if last:
-		text = "Play Again"
 
-	continue_button = _button(text, 40, 90)
-	continue_button.z_index = 50
-	$UI.add_child(continue_button)
-	continue_button.anchor_left = 0.5
-	continue_button.anchor_right = 0.5
-	continue_button.anchor_top = 1.0
-	continue_button.anchor_bottom = 1.0
-	continue_button.offset_left = -270
-	continue_button.offset_right = 270
-	continue_button.offset_top = -170
-	continue_button.offset_bottom = -80
+	var bar = HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 24)
+	bar.z_index = 50
+	$UI.add_child(bar)
+	prep_bar = bar
+	bar.anchor_left = 0.5
+	bar.anchor_right = 0.5
+	bar.anchor_top = 1.0
+	bar.anchor_bottom = 1.0
+	bar.offset_left = -502
+	bar.offset_right = 502
+	bar.offset_top = -170
+	bar.offset_bottom = -80
+
+	var restart = _heart_button("Restart Level %d" % level, 28, 90)
+	restart.custom_minimum_size = Vector2(420, 90)
+	restart.pressed.connect(_ask_restart)
+	bar.add_child(restart)
+
+	var go_text = "Continue to Level %d" % (level + 1)
 	if last:
-		continue_button.pressed.connect(_on_start_over)
+		go_text = "Play Again"
+	var go = _heart_button(go_text, 36, 90)
+	go.custom_minimum_size = Vector2(560, 90)
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if last:
+		go.pressed.connect(_ask_start_over)
 	else:
-		continue_button.pressed.connect(_on_next)
+		go.pressed.connect(_on_next)
+	bar.add_child(go)
 
-	var tw = continue_button.create_tween()
-	tw.set_loops()
-	tw.tween_property(continue_button, "modulate", Color(1.0, 0.95, 0.6), 0.7)
-	tw.tween_property(continue_button, "modulate", Color.WHITE, 0.7)
+	# fade in, bounce each button, then pulse the Continue button gold
+	bar.modulate.a = 0.0
+	var fade = bar.create_tween()
+	fade.tween_property(bar, "modulate:a", 1.0, 0.25)
+
+	var i = 0
+	for b in [restart, go]:
+		b.pivot_offset = b.custom_minimum_size / 2.0
+		b.scale = Vector2(0.5, 0.5)
+		var t = b.create_tween()
+		t.tween_property(b, "scale", Vector2.ONE, 0.45).set_delay(i * 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		i += 1
+
+	var pulse = go.create_tween()
+	pulse.set_loops()
+	pulse.tween_property(go, "modulate", Color(1.0, 0.95, 0.6), 0.7)
+	pulse.tween_property(go, "modulate", Color.WHITE, 0.7)
 
 
 func _on_next():
