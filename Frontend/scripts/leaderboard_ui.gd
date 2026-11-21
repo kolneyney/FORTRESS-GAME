@@ -244,7 +244,7 @@ func _show_rows():
 	_cell("Rank", dim, 90, 22, left)
 	_cell("Player", dim, 360, 22, left)
 	_cell("Coins left", dim, 220, 22, left)
-	_cell("Level", dim, 100, 22, left)
+	_cell("Best level", dim, 100, 22, left)
 
 	var sorted = entries.duplicate()
 	sorted.sort_custom(func(a, b): return int(a.get("coins", 0)) > int(b.get("coins", 0)))
