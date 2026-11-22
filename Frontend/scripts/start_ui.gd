@@ -225,7 +225,9 @@ func _on_play():
 	modulate = Color.WHITE
 	starting = false
 
-
+	var tut = preload("res://scripts/tutorial_ui.gd").new()
+	get_parent().add_child(tut)
+	tut.begin()
 # the camera starts zoomed in and eases back to its normal zoom
 func _zoom_in():
 	var cam = get_viewport().get_camera_2d()
