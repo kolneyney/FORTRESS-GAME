@@ -17,6 +17,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 [autoload]
 
 GameState="*uid://c77231a0btteo"
+Sound="*uid://oqtsa3kxdfsv"
 
 [display]
 
