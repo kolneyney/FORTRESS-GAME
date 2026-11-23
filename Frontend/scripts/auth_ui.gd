@@ -1,7 +1,7 @@
 extends Control
 
 const FONT_PATH = "res://assets/fonts/PixeloidSans-lxa3y.ttf"
-const BASE_URL = "http://127.0.0.1:8000"
+const BASE_URL = "https://fortress-game-bdqc.onrender.com"
 
 signal logged_in(username)
 

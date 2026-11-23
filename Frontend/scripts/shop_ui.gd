@@ -45,7 +45,7 @@ func _on_buy(defense):
 		var headers = [
 			"Authorization: Bearer " + GameState.token
 		]
-		var url = "http://127.0.0.1:8000/defenses/buy/" + str(defense_ids[defense])
+		var url = "https://fortress-game-bdqc.onrender.com/defenses/buy/" + str(defense_ids[defense])
 		var error = http.request(
 			url,
 			headers,
@@ -65,7 +65,7 @@ func _load_defenses():
 		"Authorization: Bearer " + GameState.token
 	]
 	var error = http.request(
-		"http://127.0.0.1:8000/defenses",
+		"https://fortress-game-bdqc.onrender.com/defenses",
 		headers,
 		HTTPClient.METHOD_GET
 	)

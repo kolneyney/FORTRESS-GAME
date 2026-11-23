@@ -9,7 +9,7 @@ func _ready():
 
 func test_backend_connection():
 	# Replace with your local FastAPI address
-	var url = "http://127.0.0.1:8000/" 
+	var url = "https://fortress-game-bdqc.onrender.com/" 
 	http_request.request(url)
 
 func _on_request_completed(_result, response_code, _headers, body):
