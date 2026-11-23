@@ -2,6 +2,7 @@ extends Control
 
 const FONT_PATH = "res://assets/fonts/PixeloidSans-lxa3y.ttf"
 const BASE_URL = "https://fortress-game-bdqc.onrender.com"
+const SESSION_PATH = "user://session.cfg"
 
 signal logged_in(username)
 
@@ -116,6 +117,41 @@ func _ready():
 
 	visible = false
 
+	# Restore saved session from browser storage on startup/refresh
+	_restore_saved_session()
+
+
+func _save_session_to_browser():
+	var config = ConfigFile.new()
+	config.set_value("auth", "token", GameState.token)
+	config.set_value("auth", "username", GameState.username)
+	config.save(SESSION_PATH)
+
+
+func _clear_saved_session():
+	var dir = DirAccess.open("user://")
+	if dir and dir.file_exists("session.cfg"):
+		dir.remove("session.cfg")
+
+
+func _restore_saved_session():
+	var config = ConfigFile.new()
+	if config.load(SESSION_PATH) != OK:
+		return
+
+	var saved_token = config.get_value("auth", "token", "")
+	var saved_username = config.get_value("auth", "username", "")
+	if saved_token == "" or saved_username == "":
+		return
+
+	GameState.token = saved_token
+	GameState.username = saved_username
+	GameState.logged_in = true
+	logged_in.emit(GameState.username)
+
+	# Refresh player coins and defenses from backend in background
+	_request_player_data()
+
 
 func open():
 	pass_input.text = ""
@@ -172,6 +208,7 @@ func _on_submit():
 
 	if GameState.logged_in:
 		GameState.clear_session()
+		_clear_saved_session()
 
 		logged_in.emit("")
 		_set_mode("login")
@@ -195,9 +232,9 @@ func _on_submit():
 	http.request_completed.connect(_on_done.bind(http, uname))
 
 	var request_data = {
-	"username": uname,
-	"password": pw
-}
+		"username": uname,
+		"password": pw
+	}
 
 	if mode == "register":
 		request_data["guest_progress"] = {
@@ -223,8 +260,8 @@ func _on_submit():
 				}
 			]
 		}
-	
-	var body = JSON.stringify(request_data)	
+
+	var body = JSON.stringify(request_data)
 	var err = http.request(BASE_URL + path, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 	if err != OK:
 		http.queue_free()
@@ -273,7 +310,8 @@ func _on_done(result, code, _headers, body, http, uname):
 
 func _on_visibility_changed():
 	get_tree().paused = visible
-	
+
+
 func _request_player_data():
 	var http = HTTPRequest.new()
 	add_child(http)
@@ -350,6 +388,8 @@ func _on_defenses_done(result, code, _headers, body, http, player_data):
 	GameState.load_player_progress(player_data, defense_data)
 
 	GameState.logged_in = true
+	_save_session_to_browser()
+
 	busy = false
 	submit_button.disabled = false
 	pass_input.text = ""
@@ -360,6 +400,7 @@ func _on_defenses_done(result, code, _headers, body, http, player_data):
 
 func _load_failed(error_message):
 	GameState.clear_session()
+	_clear_saved_session()
 
 	busy = false
 	submit_button.disabled = false
